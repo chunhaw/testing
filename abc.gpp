@@ -1,0 +1,1543 @@
+;---User 			: Brother
+
+;====================================================== REVISION LOG ==========================================================
+;==============================================================================================================================
+
+;==============================================================================================================================
+;====================================================== END OF REVISION LOG ===================================================
+
+
+
+@init_post	
+
+	;====================================================== FORMAT ============================================================
+	global string spin_f 
+	global string xlnext_f ylnext_f zlnext_f 
+	global string xonext_f yonext_f zonext_f
+	global string xhnext_f yhnext_f zhnext_f 
+	global string bpos_f anext_f bnext_f
+
+	;========================================================= TIME ===========================================================
+	global numeric n_TimeSecs		; Time: Seconds
+	global numeric n_TimeMins		; Time: Minutes
+	global numeric nTimeHrs			; Time: Hours
+	global numeric n_TimeAccSecs	; Time: Accumulate Seconds	
+	global numeric n_TimeAccMins	; Time: Accumulate Minutes
+	global numeric n_TimeAccHrs		; Time: Accumlate Hours
+
+	;====================================================== TRANSFORM ========================================================
+	global numeric n_G52XLocalCS	; Transform: G52 X Shifting
+	global numeric n_G52YLocalCS	; Transform: G52 Y Shifting
+	global numeric n_G52ZLocalCS	; Transform: G52 Z Shifting
+	global numeric n_AngleRotUpd	; Transform: Update Latest Rotation Angle
+
+
+	;===================================================== JOB TOOL COOLANT ======================================================
+	global logical b_FirstRapid		; Status Update: 'True' if First Rapid Move of A Job
+	global logical b_CoolantUsed	;
+	global logical b_CoolantOn		; Status Update: 'True' if Coolant is On
+	global logical b_SpindleOn		; Status Update: 'True' if Spindle is On
+	global logical b_FirstJob		; Status Update: 'True' if First Job
+	global logical b_ChangeTool		; Status Update: 'True' if Tool Change
+	global integer i_CoolantOnCode 	; Coolant: Current Coolant Code
+	global integer i_CoolantOffCode	; Coolant: Current Coolant Off Code
+
+	;======================================================= KINEMATICS ==========================================================
+	global logical b_IndexOn		; Kinematics:	'True' if G68.2 is active 
+	global logical b_X5on 			; Kinematics:	'True' if G43.4 is active
+
+	;======================================================== TURNING ============================================================
+	global integer i_SavedJobMachineType
+
+	;========================================================= GENERAL ===========================================================
+	global numeric n_XRefPoint		; Reference: X Reference Point
+	global integer i_TrcLvl			; Trace: Trace Level
+	global integer i_ToolBlkNum		; Blknum: Blknum for Tool
+	global integer i_JobBlkNum		; Blknum: Blknum for Job
+	global string pp_version
+
+	;========================================================== PROBE ============================================================
+
+	global logical b_ProbeFirstMove 
+
+
+
+  
+	;-----GPPL variables -------
+	pre_processor   = 'ISO'
+	numeric_def_f   = '5.3'
+	integer_def_f   = '5/2.0(p)'        ; Especially for Tool T##
+	gcode_f         = '<G>2/2.0(p)< >'        ; G##
+	mcode_f         = '<M>2/2.0(p)< >'        ; M##
+	feed_f          = '<F>4.3< >'
+	spin_f			= '<S>5.3(p)'
+	apos_f			= '<C>5.3< >'
+	bpos_f			= '<A>5.3< >'
+	anext_f			= apos_f
+	bnext_f			= bpos_f
+	;tool_diameter_f = '5.3/1'     
+	blknum_f        = '5.0(p)'
+	blknum_gen      = False
+	blknum_exist    = True
+	blknum          = 101
+	blknum_delta    = 1
+	blknum_max      = 9999999
+	remove_blanks   = False
+	gcode_space     = False	
+	i_ToolBlkNum = 0
+	i_JobBlkNum = 100
+	pp_version = 'V0.0 - 2025-04-28' 
+
+	;----- General --------------
+	n_XRefPoint 		= -250
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@start_of_file
+	call @Usr_Trace
+	call @Usr_Header
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@vmid_info
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@def_tool 
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@relative_mode 
+	gcode = 91
+	{nb gcode}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@absolute_mode 
+	gcode = 90
+	{nb gcode}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@machine_plane	
+	if machine_plane == XY
+		gcode = 17
+	endif
+	if machine_plane == YZ
+		gcode = 18
+	endif
+	if machine_plane == ZX
+		gcode = 19
+	endif
+	
+	{gcode:'<G>2/2.0(p)'}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@plane_data
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@start_program
+	{nb 'G0'}
+	call @machine_plane
+	call @Usr_ResetSoft
+	call @Usr_ZeroReturnZ
+	call @Usr_ZeroReturnY
+	call @Usr_ZeroReturnRot
+	call @absolute_mode
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@end_program
+
+	call @Usr_ShowerOff
+	call @Usr_CoolantOff
+	call @Usr_SpindleOff
+	call @Usr_ZeroReturnZ
+	call @Usr_ZeroReturnY
+	call @Usr_ZeroReturnRot
+	call @absolute_mode
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@end_of_file
+	{nb}
+	{nb 'N999'}
+	{nb 'M30'}
+	{nb}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@home_number 
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@change_tool 
+	call @Usr_ChangeToolReset
+	
+	if position == 1
+		call @Usr_ZeroReturnRot
+		call @absolute_mode
+	endif
+
+	b_FirstRapid = True
+	b_SpindleOn = False
+	b_FirstJob = True
+	b_ChangeTool = True
+
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@turn_change_tool 
+	b_FirstRapid = True
+	b_SpindleOn = False
+	b_FirstJob = True
+	b_ChangeTool = True
+endp 
+;-------------------------------------------------------------------------------------------------------------------------
+
+@start_of_job 
+
+	call @Usr_XYZFormat
+	call @Usr_JobName
+
+	b_FirstJob = False
+endp
+;--------------------
+
+@end_of_job
+
+	call @Usr_IndexOff
+	call @Usr_X5Off
+
+	if !X5_job
+		if tool_start_plane > zlpos
+			gcode = 0
+			{nb gcode 'Z' tool_start_plane}
+		endif
+	endif
+	{nb}
+
+	b_CoolantOn = False
+	b_ChangeTool = False
+	i_SavedJobMachineType = job_machine_type
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@m_feed_spin   				; Alway called by @start_of_job, Doesn't called by @drill	
+
+	if change(spin) == True
+		call @Usr_SpindleOn
+	endif
+
+	call @Usr_CoolantOn
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@rapid_move				; Caution : change(xpos),change(ypos), change(zpos) is initialize to True when 1st Call @rapid_move
+	gcode = 0
+	if job_machine_type == Milling
+		if b_FirstRapid == True
+			if b_ChangeTool
+				call @Usr_ToolCallPrepost
+			else 
+				{nb 'G90 ' gcode:'<G>5.0(p)<  >' xlpos ylpos}
+				{nb '    ' zlpos}
+			endif
+			call @Usr_CoolantOn
+			b_FirstRapid = False
+		else
+			{nb}
+			if change(gcode) == True
+				{gcode:'<G>5.0(p)<  >'}
+			else
+				{'    '}
+			endif
+			{[xlpos] [ylpos] [zlpos]}
+		endif
+	else 
+		if b_FirstRapid == True
+			if b_ChangeTool
+				call @Usr_ToolCallPrepost
+			else 
+				{nb 'G90 ' gcode:'<G>5.0(p)<  >' xopos}
+				{nb '    ' zopos}
+			endif 
+			b_FirstRapid = False
+		else
+			{nb}
+			if change(gcode) == True
+				{gcode:'<G>5.0(p)<  >'}
+			else
+				{'    '}
+			endif
+			{[xopos] [zopos]}
+		endif
+	endif
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+
+@move_5x
+	gcode = 0
+	if b_FirstRapid == True
+		call @Usr_ToolCallPrepost
+		{nb 'G90 ' gcode:'<G>5.0(p)<  >' xhpos yhpos apos bpos}
+		{nb '    ' zhpos}
+		call @Usr_CoolantOn
+		b_FirstRapid = False
+	else
+		{nb}
+		if change(gcode) == True
+			{gcode:'<G>5.0(p)<  >'}
+		else
+			{'    '}
+		endif
+		{xhpos yhpos zhpos apos bpos}
+	endif
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@line
+	gcode = 1
+	{nb}
+	if change(gcode) == True
+		{gcode}
+	else
+		{'    '}
+	endif
+
+	if job_machine_type == Milling
+		{[xlpos] [ylpos] [zlpos]}
+	else
+		{[xopos] [zopos]}
+	endif 
+	{[feed]}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@line_5x
+	gcode = 1
+	{nb}
+	if change(gcode) == True
+		{gcode}
+	else
+		{'    '}
+	endif
+
+	{xhpos yhpos zhpos apos bpos [feed]}
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+
+@arc
+	if arc_direction == ccw
+		gcode = 3
+	else		;cw
+		gcode = 2
+	endif	
+
+	{nb}
+	if change(gcode) == True
+		{gcode}
+	else
+		{'   '}
+	endif
+	{[xlpos] [ylpos] [zlpos]}
+
+	if arc_size == 360 OR job_type == 'thread'
+		if arc_plane == XY
+			{' I' xlcenter_rel  ' J' ylcenter_rel}
+		endif
+		if arc_plane == YZ
+			{' J' xlcenter_rel ' K' ylcenter_rel}
+		endif
+		if arc_plane == ZX
+			{' K' xlcenter_rel ' I' ylcenter_rel}
+		endif
+	else
+		if arc_size >= 180 AND job_type <> 'thread'
+			radius = -radius
+		endif
+		{' R' radius ' '}
+	endif
+	{[feed]}
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@compensation
+
+	if side == COMP_LEFT 
+		gcode = 41
+		{nb gcode 'D' job_d_offset ' '}
+	endif
+	if side == COMP_RIGHT 
+		gcode = 42
+		{nb gcode 'D' job_d_offset ' '}
+	endif
+	if side == COMP_OFF 
+		gcode = 40
+		{nb gcode}
+	endif 
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@delay
+	gcode = 4
+	{nb gcode 'P' delay_period:integer_def_f}
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@message
+	; {nb, '(', message, ')'}   		
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@drill	
+				
+	gcode = 90
+	{nb gcode}	
+	skipline = False
+	b_FirstRapid = False
+	call @rapid_move			
+
+	if drill_type == G81
+		gcode = 81
+	endif
+	if drill_type == G82
+		gcode = 82
+	endif
+	if drill_type == G83
+		gcode = 83
+	endif
+	if drill_type == G77 
+		gcode = 77
+		{nb 'M19'}				
+	endif
+	if drill_type == G85
+		gcode = 85
+	endif
+	if drill_type == G86
+		gcode = 86
+	endif
+
+	{nb 'G98 ' gcode  'Z' drill_lower_zl ' R' drill_upper_zl}
+
+	if drill_type == G83
+		{' Q' down_step}
+	endif
+
+	if drill_type == G77
+		local string pitch_label
+		local numeric thd_pitch
+		if inch_pitch == 1	;use '1' instead of 'True' for SC2013/14 competibility, SC2013 drill_opt defined as numeric (auto)
+			pitch_label = 'J'
+			thd_pitch = 25.4/tool_drill_lead	
+		else
+			pitch_label = 'I'
+			thd_pitch = tool_drill_lead
+		endif
+		{' Q' step_down ' ' pitch_label thd_pitch ' ' spin}
+	endif
+	if drill_type == G82 
+		{' P' delay:integer_def_f}
+	endif
+
+	if drill_type <> G77
+		{[' ' feed]}
+	endif
+
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@drill_point
+	if first_drill == False
+		if drill_type == G77
+			{nb '    M19'}
+		endif
+		{nb '   ' [xlpos] [ylpos] [zlpos]}
+	endif
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@end_drill
+	gcode = 80
+	{nb gcode}
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@loop_matrix_info
+	; Can not run in DNC mode
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@loop					; Can not run in DNC mode
+	local integer var_num
+    
+	var_num = loop_level + 20
+	{nb '#' var_num ' = 0'}
+	{nb 'WHILE [#' var_num ' LT ' loop_count '] DO ' loop_level}
+     
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@end_loop				; Can not run in DNC mode
+
+	local integer var_num
+
+	var_num = loop_level + 20
+	{nb '#' var_num ' = #' var_num ' + 1'}
+	{nb 'G' home_number}
+	{nb 'END ' loop_level}
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@change_ref_point						; SolidCAM use incremental Xhome, Yhome, Zhome
+
+	gcode = 52	
+    							
+	n_G52XLocalCS = n_G52XLocalCS + Xhome						
+	n_G52YLocalCS = n_G52YLocalCS + Yhome
+	n_G52ZLocalCS = n_G52ZLocalCS + Zhome
+        
+	if next_command <> '@change_ref_point'			;;;;; Skip double or triple @change_ref_point for Transform>Matrix, however equation above always update latest G52XYZLocal
+    		    	
+		if ref_point_init == True
+			{nb'G90 ' gcode 'X0. Y0. Z0.'}					; G90 added 11:17 AM 2006/June/05
+      
+		else
+			{nb'G90 ' gcode 'X' n_G52XLocalCS ' Y' n_G52YLocalCS ' Z' n_G52ZLocalCS}
+   
+		endif
+	endif
+
+	; Cancelation of G52 at reset/CLR depend on the parameter setting, bit 6 of parameter 3402 or RLC bit 3 of parameter 1202 (set to 1 = Cancel)
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@mirror
+	if mirror_type == MIRROR_OFF 
+		{nb 'G50.1 X0 Y0'}
+	else
+		{nb 'G51.1 '}
+		if mirror_type == MIRROR_X 
+			{'X1 Y0'}
+		endif
+		if mirror_type == MIRROR_Y 
+			{'X0 Y1'}
+		endif
+		if mirror_type == MIRROR_XY 
+			{'X1 Y1'}
+		endif
+	endif
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@rotate								; SolidCAM angle is incremental
+	if rotate_cancel == True
+		gcode = 69
+		{nb gcode}
+		n_AngleRotUpd = 0
+	else
+		n_AngleRotUpd = n_AngleRotUpd + angle
+		gcode = 68
+		{nb gcode 'X0 Y0 R' n_AngleRotUpd}	 ; X0 Y0 , R angle is absolute value. G91 G68 X0 Y0 R angle not effective
+	endif
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@transform_info
+		
+	;transform_type:Fourth_Axis(4),Translate(3),Rotate(2),Mirror(1) mirror_type:none,mirror_x(1),mirror_y(2), mirror_xy(3)
+	;angle, xhome yhome zhome 
+	{nb,'(TRANSFORM :'}
+	if transform_type == 4
+		{' FOURTH AXIS ANGLE: ' angle}
+	endif
+	if transform_type == 3
+		{' TRANSLATE X' xhome ' Y' yhome ' Z' zhome}
+	endif
+	if transform_type == 2
+		{' ROTATE ANGLE: ' angle}
+	endif
+	if transform_type == 1
+		if mirror_type == 1
+			{' MIRROR X'}
+		endif
+		if mirror_type == 2
+			{' MIRROR Y'}
+		endif
+		if mirror_type == 1
+			{' MIRROR XY'}
+		endif
+		if mirror_type == 0
+			{' MIRROR OFF'}
+		endif
+	endif
+	{')'}
+endp
+;-------------------------------------------------------------------------------------------------------------------------
+
+@fourth_axis
+	if !fourth_axis_last 
+		;call @Usr_IndexOn
+		b_FirstRapid = true
+		b_ChangeTool = true
+	endif
+endp
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+@Tool_Description
+	{nb,'('}
+
+	if tool_type == end_mill		; == 2		tool_user_type= 'END MILL'
+		{'T' tool_number '  END MILL D' tool_diameter:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == 1			; == bullnose	tool_user_type= 'BULL NOSE MILL'
+		{'T' tool_number '  BULL NOSE D' tool_diameter:'5.3(p)' ' R' corner_radius:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == ball_nose		; == 15		tool_user_type= 'BALL NOSE MILL'
+		{'T' tool_number '  BALL NOSE D' tool_diameter:'5.3(p)'' R' corner_radius:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == 20			; == face_mill	tool_user_type= 'FACE MILL'
+		{'T' tool_number '  FACE MILL D' tool_diameter:'5.3(p)'' R' corner_radius:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == slot_mill		; == 7		tool_user_type= 'SLOT MILL'
+		{'T' tool_number '  SLOT MILL D' tool_diameter:'5.3(p)'' R' corner_radius:'5.3(p)'' THK ' cutting_tool_length:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == dove_mill		; == 11		tool_user_type= 'DOVE TAIL MILL'
+		{'T' tool_number '  DOVE MILL D' tool_diameter:'5.3(p)'' R' corner_radius:'5.3(p)'' THK ' cutting_tool_length:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == taper_mill		; == 9		tool_user_type= 'TAPER MILL'
+		{'T' tool_number '  TAPER MILL D' tool_diameter:'5.3(p)'' TIP D',(tool_tip_radius*2):'5.3(p)'' R' corner_radius:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == lollipop_mill		; == 8		tool_user_type= 'LOLLIPOP MILL'
+		{'T' tool_number '  LOLLIPOP D' tool_diameter:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == 19			; == engraving_mill		tool_user_type= 'ENGRAVING TOOL'
+		{'T' tool_number '  ENGRAVING D' tool_diameter:'5.3(p)'' TIP D',(tool_tip_radius*2):'5.3(p)'' R' corner_radius:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == 18			; == center_drill		tool_user_type= 'CENTER DRILL'
+		{'T' tool_number '  CENTER DRILL TIP D',(tool_tip_radius*2):'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == spot_drill		; == 21		tool_user_type= 'SPOT DRILL'
+		{'T' tool_number '  SPOT DRILL D' tool_diameter:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == drill			; == 0		tool_user_type= 'DRILL'
+		{'T' tool_number '  DRILL D' tool_diameter:'5.3(p)'};	',' - ',tool_message}
+	endif
+	if tool_type == chamfer_drill		; == 10		tool_user_type= 'CHAMFER DRILL'
+		{'T' tool_number '  CHAMFER DRILL D' tool_diameter:'5.3(p)'' A' corner_radius:'5.3(p)'};	',' - ',tool_message}	; Angle use :corner_radius
+	endif
+	if tool_type == tap_mill		; == 12		tool_user_type= 'TAP'
+		{'T' tool_number '  TAP D' tool_diameter:'5.3(p)'' PITCH ' tool_drill_lead:'5.3(p)'};	',' - ',tool_message}	
+	endif
+	if tool_type == reamer_mill		; == 16		tool_user_type= 'REAMER'
+		{'T' tool_number '  REAMER D' tool_diameter:'5.3(p)'};	',' - ',tool_message}	
+	endif
+	if tool_type == 17			; == bore	tool_user_type= 'BORE'
+		{'T' tool_number '  BORE D' tool_diameter:'5.3(p)'' R' corner_radius:'5.3(p)'};	',' - ',tool_message}	
+	endif
+	if tool_type == thread_mill		; == 13		tool_user_type= 'THREAD MILL'
+		{'T' tool_number '  THREAD MILL D' tool_diameter:'5.3(p)'' PITCH ' tool_drill_lead:'5.3(p)'' TEETH ' tool_teeth_number};	,' - ',tool_message}	
+	endif
+	if tool_type == 14			; == thread_taper_milll		tool_user_type= 'THREAD TAPER'
+		{'T' tool_number '  THREAD TAPER MILL D' tool_diameter:'5.3(p)'' PITCH ' tool_drill_lead:'5.3(p)'' TEETH ' tool_teeth_number};	,' - ',tool_message}	
+	endif
+
+	{')'}
+endp
+;-------------------
+
+@Time_Store
+
+	local string sL_TimeSSMMHH
+	local string sL_TimeSS
+	local string sL_TimeMMHH
+	local string sL_TimeMM
+	local string sL_TimeHH
+	local integer iL_TimeSemiColon1
+	local integer iL_TimeSemiColon2
+
+	if job_time <> ''
+
+		sL_TimeSSMMHH = rev(trim(job_time))							;s2s1:m2m1:h2h1
+		iL_TimeSemiColon1 = instr(sL_TimeSSMMHH,':')						;s2s1 ':'	; Should be = 3
+		sL_TimeSS = left(sL_TimeSSMMHH,(iL_TimeSemiColon1-1))					;s2s1 
+		sL_TimeMMHH = Right(sL_TimeSSMMHH,(strlen(sL_TimeSSMMHH)-iL_TimeSemiColon1))	;m2m1:h2h1
+		iL_TimeSemiColon2 = instr(sL_TimeMMHH,':')						;m2m1 ':'	; Should be = 3
+		sL_TimeMM = left(sL_TimeMMHH,(iL_TimeSemiColon2-1))					;m2m1
+		sL_TimeHH = right(sL_TimeMMHH,(strlen(sL_TimeMMHH)-iL_TimeSemiColon2))		;h2h1
+
+		;----- Seconds
+		n_TimeSecs = tonum(rev(sL_TimeSS))
+		n_TimeAccSecs = n_TimeAccSecs + n_TimeSecs
+		
+		;----- Minutes
+		n_TimeMins = tonum(rev(sL_TimeMM))		
+		n_TimeAccMins = n_TimeAccMins + n_TimeMins
+		
+		;----- Hours
+		nTimeHrs = tonum(rev(sL_TimeHH))	
+		n_TimeAccHrs = n_TimeAccHrs + nTimeHrs
+
+	endif
+endp
+;-------------------
+
+@Time_TotalCal
+
+	local numeric n_TimeTotalSecs
+	local numeric n_TimeTotalMins 
+	local numeric n_TimeTotalHrs 
+	local numeric n_TimeTotalTemp
+
+	;----- Seconds
+	n_TimeTotalSecs = mod(n_TimeAccSecs,60)
+
+	;----- Minutes
+	n_TimeTotalTemp = int(n_TimeAccSecs/60)
+	n_TimeAccMins = n_TimeAccMins + n_TimeTotalTemp
+	n_TimeTotalMins = mod(n_TimeAccMins,60)
+
+	;----- Hours
+	n_TimeTotalTemp = int(n_TimeAccMins/60)
+	n_TimeAccHrs = n_TimeAccHrs + n_TimeTotalTemp
+	n_TimeTotalHrs = n_TimeAccHrs
+	
+	{nb '(TOTAL Machine Time: '  n_TimeTotalHrs:'2.0(p)' ' HOURS ' n_TimeTotalMins:'2.0(p)' ' MINUTES ' n_TimeTotalSecs:'2.0(p)' ' SECONDS )'}
+endp
+
+
+;=======================================================================================================================================================
+
+@newline
+	{nb}
+endp
+;=======================================================================================================================================================
+
+@Usr_Trace
+	if user_account == 'Ethan Tan'
+		input "i_TrcLvl", i_TrcLvl	
+		trace "all":i_TrcLvl
+	endif
+endp
+;=======================================================================================================================================================
+
+@Usr_ResetSoft
+	{'G40G49G80G90'}	
+
+endp
+;=======================================================================================================================================================
+
+@Usr_ZeroReturnZ
+	{nb 'G91G28Z0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_ZeroReturnY
+	{nb 'G91G28Y0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_ZeroReturnX
+	{nb 'G91G28X0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_ZeroReturnXY
+	{nb 'G91G28Y0.X0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_RefReturnX
+	{nb 'G90G53X' n_XRefPoint}
+endp
+;=======================================================================================================================================================
+
+@Usr_RefReturnY
+	{nb 'G90G53Y0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_RefReturnA
+	{nb 'G91G28A0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_RefReturnB
+	{nb 'G91G28C0.'}
+endp
+;=======================================================================================================================================================
+
+@Usr_ZeroReturnRot 
+	{nb 'G91G28A0.C0.'}
+endp 
+;=======================================================================================================================================================
+
+@Usr_ShowerOn
+	{nb 'M400'}
+endp
+;=======================================================================================================================================================
+
+@Usr_ShowerOff
+	{nb 'M401'}
+endp
+;=======================================================================================================================================================
+
+@Usr_Header
+	{'(PART NAME = ' upper(part_name) ')'}
+	{nb '(POSTPROCESSOR = ' pp_version ')'}
+	{nb '(PROGRAMMER = ' upper(user_account) ')'}
+	{nb}
+	{nb '(--------- PROGRAM START ---------)'}
+	{nb}
+	call @Usr_BrotherStart
+	{nb}
+endp
+;=======================================================================================================================================================
+
+@Usr_BrotherStart
+	{nb 'M353'}	;Thermal Displacement Compensation X, Y, Z
+	call @Usr_ShowerOn
+endp
+;=======================================================================================================================================================
+
+@Usr_OptStop
+	{nb'M01'}
+endp
+;=======================================================================================================================================================
+
+@Usr_CoolantOn
+	local integer coolant_count
+
+	i_CoolantOffCode = 9
+
+	if Flood_coolant == True
+		i_CoolantOnCode = 8
+		coolant_count = coolant_count + 1
+	endif
+
+	if Mist_coolant == True
+		i_CoolantOnCode = 7
+		coolant_count = coolant_count + 1
+	endif
+
+	if Air_Blast_coolant == True
+		i_CoolantOnCode = 32
+		coolant_count = coolant_count + 1
+	endif
+	
+	if Through_coolant == True
+		i_CoolantOnCode = 494
+		i_CoolantOffCode = 495
+		coolant_count = coolant_count + 1
+	endif
+
+	if coolant_count != 1
+		i_CoolantOnCode = 8
+		i_CoolantOffCode = 9
+	endif
+
+	if b_CoolantOn == False
+		{nb i_CoolantOnCode:mcode_f}
+		b_CoolantOn = True
+	endif
+
+endp
+;=======================================================================================================================================================
+
+@Usr_CoolantOff
+	if b_CoolantOn
+		mcode = i_CoolantOffCode
+		{nb mcode}
+		b_CoolantOn = False
+	endif 
+endp
+;=======================================================================================================================================================
+
+@Usr_ChangeToolReset
+	i_ToolBlkNum = i_ToolBlkNum + 1
+	if first_tool == True
+		call @Usr_OptStop
+		{nb}
+		{nb 'N' i_ToolBlkNum}
+		call @Usr_ChangeTool
+	else
+		call @Usr_CoolantOff
+		call @Usr_SpindleOff
+		call @Usr_ZeroReturnZ
+		call @Usr_ZeroReturnY
+		call @Usr_OptStop
+		{nb}
+		{nb 'N' i_ToolBlkNum:'5.3(p)'}
+		call @Usr_ChangeTool
+	endif
+	{nb}
+	call @Usr_ResetSoft
+endp
+;=======================================================================================================================================================
+
+@Usr_ChangeTool
+	{nb 'T' tool_number ' M6'}
+	skipline = False
+	call @tool_description
+endp
+;=======================================================================================================================================================
+
+@Usr_ToolCallPrepost
+
+	if job_machine_type == Milling
+		if !X5_job
+			if position == 1
+				call @Usr_IndexOff
+				{nb 'G90 G' (53+home_number) ' G0 ' xlnext ylnext}
+				{nb 'G43 G0 ' zlnext 'H'tool_number}
+			else 
+				{nb (53+home_number):gcode_f}
+				call @Usr_AxisRot
+				call @Usr_IndexOn
+				{nb 'G90 G0 ' xlnext ylnext}
+				{nb 'G43 G0 ' zlnext 'H'tool_number}
+			endif
+		else 
+			call @Usr_IndexOff
+			{nb 'G90 G' (53+home_number)' G0 ' xhnext yhnext}
+			{nb 'G43 G0 Z' clearance_plane 'H' tool_number}
+			call @Usr_X5On
+		endif
+	endif 
+
+	if job_machine_type == Turning 
+		if turning_plane_rotation == 0
+			{nb (53+mac_number):gcode_f (18):gcode_f}
+		endif
+
+		if abs(turning_plane_rotation) == 90
+			{nb (53+mac_number):gcode_f (19):gcode_f}
+		endif 
+
+		{nb 'T' tool_number ' ' (6):mcode_f}
+		{nb 'G90 G0 ' xonext yonext machine_b_value:bpos_f}
+		call @Usr_TurnSpindleOn
+		call @Usr_TurnToolSide
+		skipline = False
+		call @Usr_CoolantOn
+		{nb 'G143 G0 ' zonext 'H'tool_number}
+	endif
+
+endp
+;=======================================================================================================================================================
+@Usr_JobName
+	i_JobBlkNum = i_JobBlkNum + 1
+	{nb 'N' i_JobBlkNum:'5.3(p)'}
+	{nb '(' upper(job_name) ' | C' first_axis_angle ' | A' second_axis_angle ')'}
+endp
+;=======================================================================================================================================================
+
+@Usr_AxisRot
+	{nb 'G90G0C' first_axis_angle 'A' second_axis_angle}	
+endp
+;=======================================================================================================================================================
+
+@Usr_TurnToolSide
+	if turning_plane_rotation == 0
+		if cutting_direction == 1	; LEFT TOOL
+		endif 
+		if cutting_direction == 2	; RIGHT TOOL
+		endif
+	endif 
+
+	if abs(turning_plane_rotation) == 90
+		if cutting_direction == 1	; LEFT TOOL
+		endif 
+		if cutting_direction == 2	; RIGHT TOOL
+		endif
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@Usr_TurnSpindleOn
+	if spin_direction == cw 
+		mcode = 303
+	else 
+		mcode = 304
+	endif 
+
+	if !b_SpindleOn 
+		{spin}
+		call @Usr_TurnMillMode
+		{mcode}
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@Usr_TurnSpindleOff 
+	if b_SpindleOn
+		mcode = 305
+		{nb mcode}
+		b_SpindleOn = False
+	endif
+endp 
+;=======================================================================================================================================================
+
+@Usr_SpindleOn
+	if spin_direction == cw
+		mcode = 3
+	else
+		mcode = 4
+	endif
+
+	if !b_SpindleOn 
+		{' ' spin}
+		call @Usr_TurnMillMode
+		{mcode}
+	endif 
+endp
+;=======================================================================================================================================================
+
+@Usr_SpindleOff
+	if b_SpindleOn
+		mcode = 5
+		{nb mcode}
+		b_SpindleOn = False
+	endif
+endp
+;=======================================================================================================================================================
+
+@Usr_TurnMillMode
+	if job_machine_type == Milling 
+		if i_SavedJobMachineType <> job_machine_type
+			{' ' (141):mcode_f}
+		endif
+	endif 
+
+	if job_machine_type == Turning 
+		if i_SavedJobMachineType <> job_machine_type
+			{' ' (142):mcode_f}
+		endif 
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@Usr_XYZFormat
+	if job_machine_type == Milling 
+		xlpos_f  = '<X>5.3< >'
+		ylpos_f  = '<Y>5.3< >'
+		zlpos_f  = '<Z>5.3< >'
+
+		xlnext_f = xlpos_f
+		ylnext_f = ylpos_f
+		zlnext_f = zlpos_f
+
+		xhpos_f  = xlpos_f 
+		yhpos_f  = ylpos_f
+		zhpos_f  = zlpos_f
+ 
+		xhnext_f = xlpos_f
+		yhnext_f = ylpos_f
+		zhnext_f = zlpos_f
+
+	endif 
+
+	if job_machine_type == Turning 
+		if turning_plane_rotation == 0
+			xopos_f   = '<X>5.3(*2)< >'
+			yopos_f   = '<Y>5.3< >'
+			zopos_f   = '<Z>5.3< >'
+
+			xonext_f  = xopos_f
+			yonext_f  = yopos_f
+			zonext_f  = zopos_f
+
+		endif 
+
+		if abs(turning_plane_rotation) == 90
+			xopos_f  = '<Y>5.3< >'
+			yopos_f  = '<X>5.3< >'
+			zopos_f  = '<Z>5.3< >'
+
+			xonext_f = xopos_f
+			yonext_f = yopos_f
+			zonext_f = zopos_f
+		endif 
+		
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@Usr_IndexOff
+	if b_IndexOn
+		{nb 'G69'}
+		b_IndexOn = false
+	endif
+endp 
+;=======================================================================================================================================================
+
+@Usr_IndexOn
+	if !b_IndexOn
+		{nb 'G68.2 ' shift_x:xlpos_f shift_y:ylpos_f shift_z:zlpos_f 'I' first_plane_angle ' J' second_plane_angle ' K' third_plane_angle}
+		{nb 'G53.1'}
+		b_IndexOn = true
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@Usr_X5On 
+	if !b_X5On
+		{nb (49):gcode_f}
+		{nb 'G43.4 ' xhnext yhnext zhnext anext bnext}
+		b_X5On = true
+	endif
+endp 
+;=======================================================================================================================================================
+
+@Usr_X5Off 
+	if b_X5On
+		{nb (49):gcode_f}
+		b_X5On = false 
+	endif 
+endp
+;=======================================================================================================================================================
+
+
+
+;=======================================================================================================================================================
+;================================================================   PROBING   ==========================================================================
+;=======================================================================================================================================================
+
+; ** 8810 - Move
+; ** ** 8811 - Single Face
+; ** 8812 - Web / Pocket 
+; -------------------------------8814 - Bore / boss 
+; ** 8815 - Internal Corner 
+; ** 8816 - External Corner 
+; ------------------------------- 8817 - 5 points rectangcle
+; ------------------------------- 8818 - 4th axis
+; 8819 - PCD bore / boss 
+; ------------------------------- 8820 - Stock Allowance 
+; ** 8821 - Angled Single Face (AD input / XYZ Input)
+; ** 8822 - Angle Web / pocket 
+; ** 8823 - 3 Points bore / boss 
+; ** 8834 - feature to feature 
+; 8843 - XY angle measure
+
+
+@start_probe
+	call @Usr_XYZFormat
+
+	{nb 'G65 P8832 '}		; PROBE ON
+	b_ProbeFirstMove = true
+endp 
+;=======================================================================================================================================================
+
+@move_prb
+	if b_ProbeFirstMove
+		{nb 'G65 P8810 ' xlnext ylnext}
+		{nb 'G65 P8810 ' zlnext}
+		b_ProbeFirstMove = false
+	else 
+		{nb 'G65 P8810 ' [xlpos] [ylpos] [zlpos]}
+	endif 	
+endp      
+;=======================================================================================================================================================
+
+@line_prb
+	{nb 'G65 P8810 ' [xlpos] [ylpos] [zlpos]}
+endp        
+;=======================================================================================================================================================
+
+@prb_cyc_xyz_plan
+	; PRB_RepToches:1 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_TP1_X:272.850T PRB_TP1_Y:9.261T PRB_TP1_Z:-15.000T 
+	; PRB_RetractDist:12.000 PRB_Dir:-1 
+	; PRB_StartAngle:0.000 
+	; PRB_Overtravel:10.000F 
+
+	if ProbeCycle == 'PRB_X_PLANE' 
+		{nb 'G65 P8811 X' PRB_TP1_X }
+
+		if PRB_Overtravel <> 10
+			{' Q' PRB_Overtravel}
+		endif 
+	endif 
+
+	if ProbeCycle == 'PRB_Y_PLANE' 
+		{nb 'G65 P8811 Y' PRB_TP1_Y }
+
+		if PRB_Overtravel <> 10
+			{' Q' PRB_Overtravel}
+		endif 
+	endif 
+
+	if ProbeCycle == 'PRB_Z_PLANE' 
+		{nb 'G65 P8811 Z' PRB_TP1_Z }
+
+		if PRB_Overtravel <> 4
+			{' Q' PRB_Overtravel}
+		endif 
+	endif 
+		
+	if ActionProbeType == 1				;WORK OFFSET
+		{' S' mac_number:'5.3(p)'}
+	endif 
+endp 
+;=======================================================================================================================================================
+
+@prb_cyc_hol_cyl 
+	; ProbeCycle:'PRB_HOLE' 
+	; PRB_RepToches:1 
+	; PRB_NumTouchPoints:3 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_CP_X:0.000T PRB_CP_Y:337.850T PRB_CP_Z:-30.000T 
+	; PRB_StartHeight:-30.000 
+	; PRB_RetractDist:12.000 
+	; PRB_StartAngle:0.000 
+	; PRB_EndAngle:360.000 
+	; PRB_DeltaAngle0:120.000 
+	; PRB_DiamCirMsr:80.000 
+	; PRB_Overtravel:10.000F 
+
+
+	if ProbeCycle == 'PRB_EXT_ARC' OR ProbeCycle == 'PRB_INT_ARC'
+		{nb 'G65 P8823 D' (PRB_Radius*2) ' A' PRB_StartAngle}
+	else 
+		{nb 'G65 P8823 D' PRB_DiamCirMsr ' A' PRB_StartAngle}
+	endif 
+
+	if (PRB_StartAngle + PRB_DeltaAngle0) > 180
+		{' B' ((PRB_StartAngle + PRB_DeltaAngle0)-360)}
+	else 
+		{' B' PRB_DeltaAngle0}
+	endif 
+
+	if (PRB_StartAngle + PRB_DeltaAngle0 + PRB_DeltaAngle0) > 180
+		{' C' ((PRB_StartAngle + PRB_DeltaAngle0 + PRB_DeltaAngle0)-360)}
+	else
+		{' C' PRB_EndAngle}
+	endif 
+
+	if PRB_Overtravel <> 10
+		{' Q' PRB_Overtravel}
+	endif 
+
+	if ProbeCycle == 'PRB_CYLINDER' OR ProbeCycle == 'PRB_EXT_ARC'
+		{' R' PRB_RetractDist}
+	endif 
+
+	if ProbeCycle == 'PRB_HOLE_BOSS'
+		{' R-' PRB_RetractDist}
+	endif 
+
+	if ActionProbeType == 1				;WORK OFFSET
+		{' S' mac_number:'5.3(p)'}
+	endif 
+		
+endp 
+;=======================================================================================================================================================
+
+@prb_cyc_cor
+	; ProbeCycle:'PRB_EXT_CORNER' 
+	; PRB_RepToches:1 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_CP_X:272.850T PRB_CP_Y:-247.850T PRB_CP_Z:-15.000T 
+	; PRB_DX1:10.000T 
+	; PRB_DY1:10.000T 
+	; PRB_DX2:0.000T 
+	; PRB_DY2:0.000T 
+	; PRB_RetractDist_X:12.000 PRB_Dir_X:-1 
+	; PRB_RetractDist_Y:12.000 PRB_Dir_Y:1 
+	; PRB_StartAngle:0.000 
+	; PRB_Overtravel:10.000F 
+
+	local numeric Probe_i Probe_j 
+	Probe_i = PRB_DX2 
+	Probe_j = PRB_DY2
+
+	if ProbeCycle == 'PRB_EXT_CORNER' 
+		{nb 'G65 P8816 '}
+	endif 
+
+	if ProbeCycle == 'PRB_INT_CORNER'
+		{nb 'G65 P8815'}
+	endif 
+
+	{'X' PRB_CP_X ' Y' PRB_CP_Y Probe_i:'< I>5.3(d)' Probe_j:'<J>5.3(d)'}
+endp 
+;=======================================================================================================================================================
+
+@prb_cyc_bos_pckt
+
+	{nb 'G65 P8812'}
+	; ProbeCycle:'PRB_POCKET' 
+	; PRB_AlongAxis:'Y' 
+	; PRB_RepToches:1 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_TP2_X:-362.850T PRB_TP2_Y:-42.199T PRB_TP2_Z:-20.000T 
+	; PRB_TPY2_Y:47.801T 
+	; PRB_LengthY:90.000T 
+	; PRB_StartHeight:-20.000 
+	; PRB_RetractDist:12.000 
+	; PRB_StartAngle:90.000 
+	; PRB_Overtravel:10.000F 
+
+	if ProbeCycle == 'PRB_POCKET'
+		if PRB_AlongAxis == 'XY'
+			print 'Move Along XY Not Supported!!'
+		endif 
+		if PRB_AlongAxis == 'X'
+			{' X' PRB_LengthX}
+		endif
+		if PRB_AlongAxis == 'Y'
+			{' Y' PRB_LengthY}
+		endif 
+	endif
+
+
+
+	; ProbeCycle:'PRB_BOSS' 
+	; PRB_AlongAxis:'Y' 
+	; PRB_RepToches:1 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_TP2_X:-362.850T PRB_TP2_Y:-247.850T PRB_TP2_Z:-30.235T 
+	; PRB_TPY2_Y:-127.850T 
+	; PRB_LengthY:120.000T 
+	; PRB_StartHeight:25.000 
+	; PRB_RetractDist:12.000 
+	; PRB_StartAngle:90.000 
+	; PRB_Overtravel:10.000F 
+
+	if ProbeCycle == 'PRB_BOSS'
+		if PRB_AlongAxis == 'XY'
+			print 'Move Along XY Not Supported!!'
+		endif 
+		if PRB_AlongAxis == 'X'
+			{' X' PRB_LengthX}
+		endif
+		if PRB_AlongAxis == 'Y'
+			{' Y' PRB_LengthY}
+		endif 
+		{' ' PRB_StartHeight:zlpos_f 'R' PRB_RetractDist}
+	endif
+
+
+	; ProbeCycle:'PRB_POCKET_BOSS' 
+	; PRB_AlongAxis:'Y' 
+	; PRB_RepToches:1 
+	; PRB_FirstCycle:1 
+	; PRB_LastCycle:1 
+	; PRB_TP2_X:-362.850T PRB_TP2_Y:137.850T PRB_TP2_Z:-30.000T 
+	; PRB_TPY2_Y:237.850T 
+	; PRB_LengthY:100.000T 
+	; PRB_StartHeight:20.000 
+	; PRB_RetractDist:10.000 
+	; PRB_StartAngle:90.000 
+	; PRB_Overtravel:10.000F 
+
+	if ProbeCycle == 'PRB_POCKET_BOSS'
+		if PRB_AlongAxis == 'XY'
+			print 'Move Along XY Not Supported!!'
+		endif 
+		if PRB_AlongAxis == 'X'
+			{' X' PRB_LengthX}
+		endif
+		if PRB_AlongAxis == 'Y'
+			{' Y' PRB_LengthY}
+		endif 
+		{' ' PRB_StartHeight:zlpos_f 'R-' PRB_RetractDist}
+	endif
+	
+
+	if ActionProbeType == 1
+		{' S' mac_number:'5.3(p)'}
+	endif
+endp 
+;=======================================================================================================================================================
+
+@end_probe 
+	{nb 'G65 P8833'}
+	b_ProbeFirstMove = true
+
+	call @Usr_ProbeMacro
+endp
+;=======================================================================================================================================================
+
+@Usr_ProbeMacro 
+	local integer ErrCode
+	local numeric NominalDia, LowerLimit, UpperLimit, NominalPt   ;Hole, Cylinder, Point
+	local numeric NominalWidthX, NominalWidthY ,LowerLimitX, LowerLimitY, UpperLimitX, UpperLimitY  ;Boss, Pocket
+	local numeric TolAdj 
+
+	if ProbeCycle eq 'PRB_X_PLANE' 
+		{nb '#150 = #135'}
+		ErrCode = 5
+		NominalPt = PRB_TP1_X + ((MinCoordToleranceX+MaxCoordToleranceX)/2)
+		LowerLimit = PRB_TP1_X + MinCoordToleranceX
+		UpperLimit = PRB_TP1_X + MaxCoordToleranceX
+
+	elseif ProbeCycle eq 'PRB_Y_PLANE'
+		{nb '#150 = #136'}
+		ErrCode = 6
+		NominalPt = PRB_TP1_Y + ((MinCoordToleranceY+MaxCoordToleranceY)/2)
+		LowerLimit = PRB_TP1_Y + MinCoordToleranceY
+		UpperLimit = PRB_TP1_Y + MaxCoordToleranceY
+	endif
+
+	if ProbeCycle eq 'PRB_X_PLANE' OR ProbeCycle eq 'PRB_Y_PLANE'
+		if b_ProbeIntWall
+			{nb 'IF [#150 GE ' UpperLimit '] GOTO ' ((i_ToolBlkNum*1000)+1)} ;Overcut
+			{nb 'IF [#150 LE ' LowerLimit '] GOTO ' ((i_ToolBlkNum*1000)+2)} ;Undercut
+			{nb 'GOTO ' ((i_ToolBlkNum*1000)+3)}  ;OK
+			{nb}
+			{nb 'N' ((i_ToolBlkNum*1000)+1)}   ;Overcut
+			if b_ProbeAlarmReport 
+				{nb '#151 = 1'}
+			else 
+				{nb '#151 = 0'}
+			endif 
+			{nb 'IF [#151 EQ 1] GOTO 999'}
+			call @Usr_ProbeAlarm(ErrCode)
+			{nb 'N' ((i_ToolBlkNum*1000)+2)}   ;Undercut
+			{nb 'G91G10L11P#4120R' '[#150-'NominalPt']'}
+			{nb 'GOTO ' i_JobBlkNum:'5.3(p)'}
+		else 
+			{nb 'IF [#150 LE ' LowerLimit '] GOTO ' ((i_ToolBlkNum*1000)+1)} ;Overcut`
+			{nb 'IF [#150 GE ' UpperLimit '] GOTO ' ((i_ToolBlkNum*1000)+2)} ;Undercut
+			{nb 'GOTO ' ((i_ToolBlkNum*1000)+3):'5.3(p)'}  ;OK
+			{nb}
+			{nb 'N' ((i_ToolBlkNum*1000)+1)}   ;Overcut
+			if b_ProbeAlarmReport 
+				{nb '#151 = 1'}
+			else 
+				{nb '#151 = 0'}
+			endif 
+			{nb 'IF [#151 EQ 1] GOTO ' ((i_ToolBlkNum*1000)+3) }
+			call @Usr_ProbeAlarm(ErrCode)
+			{nb 'N' ((i_ToolBlkNum*1000)+2)}   ;Undercut
+			{nb 'G91G10L11P#4120R' '['NominalPt'-#150]'}
+			{nb 'GOTO ' i_JobBlkNum:'5.3(p)'}
+			{nb}
+			{nb 'N' ((i_ToolBlkNum*1000)+3) }
+		endif
+	endif 
+
+	if ProbeCycle == 'PRB_Z_PLANE'
+		{nb '#150 = #137'}
+		ErrCode = 7
+		NominalPt = PRB_TP1_Z
+		LowerLimit = PRB_TP1_Z + MinCoordToleranceZ
+		UpperLimit = PRB_TP1_Z + MaxCoordToleranceZ
+
+		{nb 'IF [#150 LE ' LowerLimit '] GOTO ' ((i_ToolBlkNum*1000)+1)} ;Overcut
+		{nb 'IF [#150 GE ' UpperLimit '] GOTO ' ((i_ToolBlkNum*1000)+2)} ;Undercut
+		{nb 'GOTO '((i_ToolBlkNum*1000)+3)}  
+		{nb}
+		{nb 'N' ((i_ToolBlkNum*1000)+1)}   ;Overcut
+		if b_ProbeAlarmReport 
+			{nb '#151 = 1'}
+		else 
+			{nb '#151 = 0'}
+		endif 
+		{nb 'IF [#151 EQ 1] GOTO ' ((i_ToolBlkNum*1000)+3) }
+		call @Usr_ProbeAlarm(ErrCode)
+		{nb 'N' ((i_ToolBlkNum*1000)+2)}   ;Undercut
+		{nb 'G91G10L10P#175R' '['NominalPt'-#150]'}
+		{nb 'G90'}
+		{nb 'GOTO ' i_JobBlkNum:'5.3(p)'}
+		{nb}
+		{nb 'N' ((i_ToolBlkNum*1000)+3) }
+	endif 
+
+
+	if ProbeCycle eq 'PRB_EXT_CORNER' or ProbeCycle eq 'PRB_INT_CORNER'
+		{nb '#150 = #135'} ;X result
+		{nb '#151 = #136'} ;Y result
+		{nb '#152 = #140'} ;X Error
+		{nb '#153 = #141'} ;Y Error
+	endif
+endp 
+;=======================================================================================================================================================
+
+@Usr_ProbeAlarm(integer ErrCode)
+	local string ErrMsg
+	if ErrCode eq 1
+		ErrMsg = 'HOLE/INT-DIA'
+	endif
+	if ErrCode eq 2
+		ErrMsg = 'CYL/EXT-DIA'
+	endif  
+	if ErrCode eq 3
+		ErrMsg = 'EXT-WIDTH'
+	endif 
+	if ErrCode eq 4
+		ErrMsg = 'INT-WIDTH'
+	endif   
+	if ErrCode eq 5
+		ErrMsg = 'POINT X'
+	endif
+	if ErrCode eq 6
+		ErrMsg = 'POINT Y'
+	endif
+	if ErrCode eq 7
+		ErrMsg = 'POINT Z'
+	endif
+
+	call @Usr_ProbeReport
+
+	{nb '#3000=' ErrCode:'5.3(p)' '(' ErrMsg ': OUT OF TOL)'}
+	{nb 'GOTO 999'}
+	{nb}
+endp 
+;=======================================================================================================================================================
+
+@Usr_ProbeReport
+
+	if ProbeCycle eq 'PRB_X_PLANE'
+		{nb 'DPRNT[OPERATION**'ProbeCycle'**/**'upper(probe_name)']'}
+		{nb 'DPRNT[**POS-X:*'PRB_TP1_X'**/**TOL-MIN:*'MinCoordToleranceX'**/**TOL-MAX:*'MaxCoordToleranceX']'}
+		{nb 'DPRNT[**POS-X-MEASURE:*#150[53]**/**POS-X-ERR:*#140[53]*]'}
+		{nb 'DPRNT[]'}
+		{nb 'PCLOS'}      
+	endif
+
+	if ProbeCycle eq 'PRB_Y_PLANE'
+		{nb 'DPRNT[OPERATION**'ProbeCycle'**/**'upper(probe_name)']'}
+		{nb 'DPRNT[**POS-Y:*'PRB_TP1_Y'**/**TOL-MIN:*'MinCoordToleranceY'**/**TOL-MAX:*'MaxCoordToleranceY']'}
+		{nb 'DPRNT[**POS-Y-MEASURE:*#150[53]**/**POS-Y-ERR:*#141[53]*]'}
+		{nb 'DPRNT[]'}
+		{nb 'PCLOS'}
+	endif 
+
+	if ProbeCycle eq 'PRB_Z_PLANE'
+		{nb 'DPRNT[OPERATION**'ProbeCycle'**/**'upper(probe_name)']'}
+		{nb 'DPRNT[**POS-Z:*'PRB_TP1_Z'**/**TOL-MIN:*'MinCoordToleranceZ'**/**TOL-MAX:*'MaxCoordToleranceZ']'}
+		{nb 'DPRNT[**POS-Z-MEASURE:*#150[53]**/**POS-Z-ERR:*#142[53]*]'}
+		{nb 'DPRNT[]'}
+		{nb 'PCLOS'}
+	endif 
+endp 
+
